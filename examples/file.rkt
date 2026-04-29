@@ -3,44 +3,50 @@
 (require effect-racket)
 
 (effect remaining-reads ())
+(effect decrease-remaining-reads ())
 (effect do-read ())
 
 (define (file-read-like data)
   (handler
     [(do-read)
      (with ((file-read-like (cdr data)))
-           (continue (car data)))]))
+           (continue* (car data)))]))
 
 (define (has-reads-left eff)
   (cond
     [(do-read? eff)
-     #true
      (> (remaining-reads) 0)]
     [else #true]))
 
-(define (is-text item)
-  (string? item))
+(define (is-eof s)
+  (string=? s "\0"))
+
+(define (reads-result-correct item)
+  (let ([remainings (decrease-remaining-reads)])
+    (cond
+      [(equal? remainings 0) (is-eof item)]
+      [else (string? item)])))
 
 (define/contract (file-read)
-  (->e has-reads-left is-text)
+  (and/c
+    (-> string?)
+    (->e has-reads-left reads-result-correct))
+  (do-read)
   (do-read)
   (do-read)
   (do-read))
 
 (define (contract-check n)
   (contract-handler
-    [(remaining-reads) (values n (contract-check (- n 1)))]))
+    [(decrease-remaining-reads) (values (- n 1) (contract-check (- n 1)))]
+    [(remaining-reads) (values n (contract-check n))]))
 
-;; the main function just read, but there is a check
-;; that it cannot perform more reads than possible
 (define (perform-read-with-data f data)
   (with
-    ;; I think there's a bug here that the effect is being
-    ;; called twice, therefore we have to double the effect count
-    ((contract-check (* 2 (length data)))
+    ((contract-check (length data))
      (file-read-like data))
     (f)))
 
 (perform-read-with-data
   file-read
-  '("a" "b"))
+  '("a" "b" "c" "\0"))
