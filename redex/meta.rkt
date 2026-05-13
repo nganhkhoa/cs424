@@ -19,7 +19,7 @@
   [(unhandled ♢ (in-hole E_2 (handle ♢ E♢_3 with v))) #false]
   [(unhandled _ _) #true])
 
-;; groups all marks pre-condition
+;; groups all marks pre-contracts
 (define-metafunction dependent-eval
   ↑ : any -> any
   [(↑ hole) hole]
@@ -42,7 +42,7 @@
   [(↑ (mark (k l j) (v_1 ▷ v_2) E))
       (mon (k l j) v_1 (↑ E))])
 
-;; groups all marks pre-condition
+;; groups all marks post-contracts
 (define-metafunction dependent-eval
   ↓ : any -> any
   [(↓ hole) hole]
@@ -65,7 +65,7 @@
   [(↓ (mark (k l j) (v_1 ▷ v_2) E))
       (in-hole (↓ E) (mon (k l j) v_2 hole))])
 
-;; groups all marks pre-condition
+;; groups all marks post-contracts with dependent
 (define-metafunction dependent-eval
   ↓↓ : v any -> any
   [(↓↓ v hole) hole]
