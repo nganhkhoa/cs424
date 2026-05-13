@@ -50,6 +50,35 @@
 
     ;; ATTENTION:
     ;; DO▷ in Fig. 3 and Section 4 (dependent) are different
+
+    ;; Fig. 3 no dependent contract
+    ;; [--> (handle ▷ (in-hole E▷ (do v)) with v_h)
+    ;;      ((v_h e_v) (λ (x) (handle ▷ (in-hole E▷ e_x) with v_h)))
+
+    ;;      (side-condition (term (unhandled ▷ E▷)))
+    ;;      (where e_v (in-hole (↑ E▷) v))
+    ;;      (where e_x (in-hole (↓ E▷) x))
+    ;;      DO▷]
+
+    [--> (handle ▷ (in-hole E▷ (do v)) with v_h)
+         ((v_h e_v) (λ (x) (handle ▷ (in-hole E▷ e_x) with v_h)))
+
+         (side-condition (term (unhandled ▷ E▷)))
+         (where e_v (in-hole (↑ E▷) v))
+         (where e_x (in-hole (↓↓ v E▷) x))
+         DO▷]
+
+    [--> (handle ♢ (in-hole E♢ (do v)) with (tuple v_1 v_2))
+         (handle ♢ (in-hole E♢ v_1) with v_2)
+
+         (side-condition (term (unhandled ♢ E♢)))
+         DO-PAIR♢]
+
+    [--> (handle ♢ (in-hole E♢ (do v)) with f)
+         (handle ♢ (in-hole E♢ (do v)) with (f v))
+
+         (side-condition (term (unhandled ♢ E♢)))
+         DO-FUN♢]
     ))
 
 (define ->effects-eval
@@ -125,6 +154,13 @@
 
 
   ;; effects-eval reduction tests
+  (test-->> ->*
+            (term (handle ▷ (do true) with (λ (x) (λ (k) (k (tuple x false))))))
+            (term (tuple true false)))
+
+  (test-->> ->*
+            (term (handle ▷ (do true) with (λ (x) (λ (k) (k (tuple false x))))))
+            (term (tuple false true)))
 
   ;; dependent-eval reduction tests
 
