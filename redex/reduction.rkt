@@ -37,8 +37,9 @@
     [--> (mon (k l j) (v_1 -> v_2) v) (err k j)
          (side-condition (not (redex-match? dependent-eval f (term v))))
          MON-FUN]
-    [--> (mon (k l j) (v_1 -> v_2) f) (λ (x) (mon (k l j) v_2 (f (mon (l k j) x))))
+    [--> (mon (k l j) (v_1 -> v_2) f) (λ (x) (mon (k l j) v_2 (f (mon (l k j) v_1 x))))
          GRD-FUN]))
+
 
 (define ->effects
   (extend-reduction-relation ->contract dependent-eval
@@ -117,51 +118,324 @@
   (compatible-closure -> dependent-eval E))
 
 (module+ test
-  ;; core reduction tests
-  (test-->> ->*
-            (term (if false true false))
-            (term false))
+  ;; --------------------------
+  ;; core
+  ;; --------------------------
 
-  (test-->> ->*
-            (term ((λ (x) (tuple x true)) false))
-            (term (tuple false true)))
+  ;; IF-TRUE
+  (test--> ->core
+           (term (if true false true))
+           (term false))
+  (test--> ->core
+           (term (if (tuple true false) true false))
+           (term true))
+  (test--> ->core
+           (term (if (λ (x) x) (tuple true false) false))
+           (term (tuple true false)))
 
-  (test-->> ->*
-            (term (fst (tuple (λ (x) true) (λ (y) false))))
-            (term (λ (x) true)))
+  ;; IF-FALSE
+  (test--> ->core
+           (term (if false true false))
+           (term false))
+  (test--> ->core
+           (term (if false (tuple true false) true))
+           (term true))
+  (test--> ->core
+           (term (if false ((λ (x) x) true) (tuple false true)))
+           (term (tuple false true)))
 
-  (test-->> ->*
-            (term (snd (tuple (λ (x) true) (λ (y) false))))
-            (term (λ (y) false)))
+  ;; APP-LAMBDA
+  (test--> ->core
+           (term ((λ (x) x) true))
+           (term true))
+  (test--> ->core
+           (term ((λ (x) (tuple x false)) true))
+           (term (tuple true false)))
+  (test--> ->core
+           (term ((λ (x) ((λ (y) x) false)) true))
+           (term ((λ (y) true) false)))
 
-  ;; contract reduction tests
-  (test-->> ->*
-            (term (mon (k l j) true true))
-            (term true))
+  ;; APP-OP
+  (test--> ->core
+           (term (fst (tuple true false)))
+           (term true))
+  (test--> ->core
+           (term (snd (tuple true false)))
+           (term false))
+  (test--> ->core
+           (term (fst (tuple (λ (x) x) true)))
+           (term (λ (x) x)))
 
-  (test-->> ->*
-            (term (mon (k l j) false true))
-            (term (err k j)))
+  ;; --------------------------
+  ;; contract
+  ;; --------------------------
 
-  ;; effects reduction tests
-  (test-->> ->*
-         (term (handle ▷ (tuple true false) with (λ (x) x)))
-         (term (tuple true false)))
+  ;; MON-TRUE
+  (test--> ->contract
+           (term (mon (k l j) true true))
+           (term true))
+  (test--> ->contract
+           (term (mon (k l j) true false))
+           (term false))
+  (test--> ->contract
+           (term (mon (k l j) true (tuple true false)))
+           (term (tuple true false)))
 
-  (test-->> ->*
-            (term (handle ♢ (tuple true false) with (tuple (λ (x) y) false)))
-            (term (tuple true false)))
+  ;; MON-FALSE
+  (test--> ->contract
+           (term (mon (k l j) false true))
+           (term (err k j)))
+  (test--> ->contract
+           (term (mon (k l j) false false))
+           (term (err k j)))
+  (test--> ->contract
+           (term (mon (k l j) false (tuple true false)))
+           (term (err k j)))
 
+  ;; MON-FLAT
+  (test--> ->contract
+         (term (mon (k l j) (λ (x) true) false))
+         (term (mon (k l j) ((λ (x) true) false) false)))
+  (test--> ->contract
+         (term (mon (k l j) (λ (x) false) true))
+         (term (mon (k l j) ((λ (x) false) true) true)))
+  (test--> ->contract
+         (term (mon (k l j) fst (tuple true false)))
+         (term (mon (k l j) (fst (tuple true false)) (tuple true false))))
 
-  ;; effects-eval reduction tests
-  (test-->> ->*
-            (term (handle ▷ (do true) with (λ (x) (λ (k) (k (tuple x false))))))
-            (term (tuple true false)))
+  ;; MON-PAIR
+  (test--> ->contract
+           (term (mon (k l j) (tuple true true) true))
+           (term (err k j)))
+  (test--> ->contract
+           (term (mon (k l j) (tuple true false) false))
+           (term (err k j)))
+  (test--> ->contract
+           (term (mon (k l j) (tuple true true) (λ (x) x)))
+           (term (err k j)))
 
-  (test-->> ->*
-            (term (handle ▷ (do true) with (λ (x) (λ (k) (k (tuple false x))))))
-            (term (tuple false true)))
+  ;; GRD-PAIR
+  (test--> ->contract
+           (term (mon (k l j) (tuple true true) (tuple false true)))
+           (term (tuple (mon (k l j) true false)
+                        (mon (k l j) true true))))
+  (test--> ->contract
+           (term (mon (k l j) (tuple false true) (tuple true false)))
+           (term (tuple (mon (k l j) false true)
+                        (mon (k l j) true false))))
+  (test--> ->contract
+           (term (mon (k l j) (tuple (λ (x) true) true) (tuple false true)))
+           (term (tuple (mon (k l j) (λ (x) true) false)
+                        (mon (k l j) true true))))
 
-  ;; dependent-eval reduction tests
+  ;; MON-FUN
+  (test--> ->contract
+           (term (mon (k l j) (true -> true) true))
+           (term (err k j)))
+  (test--> ->contract
+           (term (mon (k l j) (true -> false) false))
+           (term (err k j)))
+  (test--> ->contract
+           (term (mon (k l j) (true -> true) (tuple true false)))
+           (term (err k j)))
 
-  )
+  ;; GRD-FUN
+  (test--> ->contract
+           (term (mon (k l j) (true -> true) fst))
+           (term (λ (x) (mon (k l j) true (fst (mon (l k j) true x))))))
+  (test--> ->contract
+           (term (mon (k l j) (false -> true) snd))
+           (term (λ (x) (mon (k l j) true (snd (mon (l k j) false x))))))
+  (test--> ->contract
+           (term (mon (k l j) (true -> false) (λ (y) (tuple y true))))
+           (term (λ (x) (mon (k l j) false
+                             ((λ (y) (tuple y true))
+                              (mon (l k j) true x))))))
+
+  ;; --------------------------
+  ;; effects
+  ;; --------------------------
+
+  ;; HANDLE
+  (test--> ->effects
+           (term (handle ▷ true with false))
+           (term true))
+  (test--> ->effects
+           (term (handle ♢ (tuple true false) with true))
+           (term (tuple true false)))
+  (test--> ->effects
+           (term (handle ▷ (λ (x) x) with (tuple true false)))
+           (term (λ (x) x)))
+
+  ;; DO▷
+  (test--> ->effects
+           (term (handle ▷ (do true)
+                         with (λ (r) (λ (k) (k r)))))
+           (term (((λ (r) (λ (k) (k r))) true)
+                  (λ (x) (handle ▷ x
+                                 with (λ (r) (λ (k) (k r))))))))
+  (test--> ->effects
+           (term (handle ▷ (tuple (do true) false)
+                         with (λ (r) (λ (k) (k r)))))
+           (term (((λ (r) (λ (k) (k r))) true)
+                  (λ (x) (handle ▷ (tuple x false)
+                                 with (λ (r) (λ (k) (k r))))))))
+  (test--> ->effects
+           (term (handle ▷ (if (do true) false true)
+                         with (λ (r) (λ (k) (k r)))))
+           (term (((λ (r) (λ (k) (k r))) true)
+                  (λ (x) (handle ▷ (if x false true)
+                                 with (λ (r) (λ (k) (k r))))))))
+
+  ;; DO-PAIR♢
+  (test--> ->effects
+           (term (handle ♢ (mon (k l j) (do true) true)
+                         with (tuple false false)))
+           (term (handle ♢ (mon (k l j) false true)
+                         with false)))
+  (test--> ->effects
+           (term (handle ♢ (mon (k l j) (do true) true)
+                         with (tuple true false)))
+           (term (handle ♢ (mon (k l j) true true)
+                         with false)))
+  (test--> ->effects
+           (term (handle ♢ (mon (k l j) (do false) true)
+                         with (tuple (tuple true false) true)))
+           (term (handle ♢ (mon (k l j) (tuple true false) true)
+                         with true)))
+
+  ;; DO-FUN♢
+  (test--> ->effects
+           (term (handle ♢ (mon (k l j) (do true) true)
+                         with (λ (x) (tuple x false))))
+           (term (handle ♢ (mon (k l j) (do true) true)
+                         with ((λ (x) (tuple x false)) true))))
+  (test--> ->effects
+           (term (handle ♢ (mon (k l j) (do false) true)
+                         with (λ (x) (tuple true x))))
+           (term (handle ♢ (mon (k l j) (do false) true)
+                         with ((λ (x) (tuple true x)) false))))
+  (test--> ->effects
+           (term (handle ♢ (mon (k l j) (do true) true)
+                         with (λ (x) (tuple false false))))
+           (term (handle ♢ (mon (k l j) (do true) true)
+                         with ((λ (x) (tuple false false)) true))))
+
+  ;; --------------------------
+  ;; effects-eval
+  ;; --------------------------
+
+  ;; MON-HANDLE▷
+  (test--> ->effects-eval
+           (term (mon (k l j) (true ▷ true) true))
+           (term (err k j)))
+  (test--> ->effects-eval
+           (term (mon (k l j) (false ▷ true) false))
+           (term (err k j)))
+  (test--> ->effects-eval
+           (term (mon (k l j) (true ▷ false) (tuple true false)))
+           (term (err k j)))
+
+  ;; GRD-HANDLE▷
+  (test--> ->effects-eval
+           (term (mon (k l j) (true ▷ false) fst))
+           (term (λ (x) (mark (k l j) (true ▷ false) (fst x)))))
+  (test--> ->effects-eval
+           (term (mon (k l j) (false ▷ true) snd))
+           (term (λ (x) (mark (k l j) (false ▷ true) (snd x)))))
+  (test--> ->effects-eval
+           (term (mon (k l j) (true ▷ true) (λ (y) (do y))))
+           (term (λ (x) (mark (k l j) (true ▷ true)
+                              ((λ (y) (do y)) x)))))
+
+  ;; MARK
+  (test--> ->effects-eval
+           (term (mark (k l j) true false))
+           (term false))
+  (test--> ->effects-eval
+           (term (mark (k l j) (true ▷ false) (tuple true false)))
+           (term (tuple true false)))
+  (test--> ->effects-eval
+           (term (mark (k l j) (♢ true) (λ (x) x)))
+           (term (λ (x) x)))
+
+  ;; MON-HANDLE♢
+  (test--> ->effects-eval
+           (term (mon (k l j) (♢ true) true))
+           (term (err k j)))
+  (test--> ->effects-eval
+           (term (mon (k l j) (♢ false) false))
+           (term (err k j)))
+  (test--> ->effects-eval
+           (term (mon (k l j) (♢ (tuple true false)) (tuple true false)))
+           (term (err k j)))
+
+  ;; GRD-HANDLE♢
+  (test--> ->effects-eval
+           (term (mon (k l j) (♢ (tuple true false)) fst))
+           (term (λ (x) (handle ♢ (fst x) with (tuple true false)))))
+  (test--> ->effects-eval
+           (term (mon (k l j) (♢ (tuple false true)) snd))
+           (term (λ (x) (handle ♢ (snd x) with (tuple false true)))))
+  (test--> ->effects-eval
+           (term (mon (k l j) (♢ (λ (r) (tuple r false))) (λ (y) y)))
+           (term (λ (x) (handle ♢ ((λ (y) y) x)
+                                 with (λ (r) (tuple r false))))))
+
+  ;; --------------------------
+  ;; dependent-eval
+  ;; --------------------------
+
+  ;; MON-DEP-FUN
+  (test--> ->dependent-eval
+           (term (mon (k l j) (true => (λ (y) true)) true))
+           (term (err k j)))
+  (test--> ->dependent-eval
+           (term (mon (k l j) (false => (λ (y) true)) false))
+           (term (err k j)))
+  (test--> ->dependent-eval
+           (term (mon (k l j) (true => (λ (y) false)) (tuple true false)))
+           (term (err k j)))
+
+  ;; GRD-DEP-FUN
+  (test--> ->dependent-eval
+           (term (mon (k l j) (true => (λ (y) true)) fst))
+           (term (λ (x)
+                   (mon (k l j)
+                        ((λ (y) true) (mon (l j j) true x))
+                        (fst (mon (l k j) true x))))))
+  (test--> ->dependent-eval
+           (term (mon (k l j) (false => (λ (y) true)) snd))
+           (term (λ (x)
+                   (mon (k l j)
+                        ((λ (y) true) (mon (l j j) false x))
+                        (snd (mon (l k j) false x))))))
+  (test--> ->dependent-eval
+           (term (mon (k l j) (true => (λ (y) y)) (λ (z) z)))
+           (term (λ (x)
+                   (mon (k l j)
+                        ((λ (y) y) (mon (l j j) true x))
+                        ((λ (z) z) (mon (l k j) true x))))))
+
+  ;; MON-HANDLE▶
+  (test--> ->dependent-eval
+           (term (mon (k l j) (true ▶ (λ (r) true)) true))
+           (term (err k j)))
+  (test--> ->dependent-eval
+           (term (mon (k l j) (false ▶ (λ (r) true)) false))
+           (term (err k j)))
+  (test--> ->dependent-eval
+           (term (mon (k l j) (true ▶ (λ (r) false)) (tuple true false)))
+           (term (err k j)))
+
+  ;; GRD-HANDLE▶
+  (test--> ->dependent-eval
+           (term (mon (k l j) (true ▶ (λ (r) true)) fst))
+           (term (λ (x) (mark (k l j) (true ▶ (λ (r) true)) (fst x)))))
+  (test--> ->dependent-eval
+           (term (mon (k l j) (false ▶ (λ (r) true)) snd))
+           (term (λ (x) (mark (k l j) (false ▶ (λ (r) true)) (snd x)))))
+  (test--> ->dependent-eval
+           (term (mon (k l j) (true ▶ (λ (r) false)) (λ (y) (do y))))
+           (term (λ (x) (mark (k l j) (true ▶ (λ (r) false))
+                              ((λ (y) (do y)) x))))))
